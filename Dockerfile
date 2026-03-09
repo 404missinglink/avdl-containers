@@ -25,8 +25,10 @@ RUN echo "=== FFmpeg stage: binary ===" \
     && echo "=== FFmpeg stage: default LD_LIBRARY_PATH ===" \
     && echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-<unset>}"
 
-# So the loader finds FFmpeg shared libs at build and runtime.
-ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}
+# Loader must find: (1) torchcodec's libtorchcodec_core4.so next to custom_ops4.so,
+# (2) FFmpeg libavutil.so.56 etc. in /usr/lib/x86_64-linux-gnu. ldd showed "libtorchcodec_core4.so => not found".
+ENV TORCHCODEC_LIB=/usr/local/lib/python3.12/site-packages/torchcodec
+ENV LD_LIBRARY_PATH=${TORCHCODEC_LIB}:/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}
 
 # ---- Stage 2: TorchCodec pip install ----
 # Install TorchCodec 0.9 (matches torch 2.9 per torchcodec README compatibility table).
@@ -43,7 +45,7 @@ RUN echo "=== TorchCodec stage: pip show ===" \
 # ---- Stage 3: Loader and import ----
 # Verify Stage 3: LD_LIBRARY_PATH at runtime, ldd on FFmpeg-4 .so to see missing deps, then import.
 RUN echo "=== Loader stage: LD_LIBRARY_PATH (with our path) ===" \
-    && export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-} \
+    && export LD_LIBRARY_PATH=${TORCHCODEC_LIB}:/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-} \
     && echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" \
     && echo "=== Loader stage: ldd libtorchcodec_custom_ops4.so (FFmpeg 4) ===" \
     && ldd /usr/local/lib/python3.12/site-packages/torchcodec/libtorchcodec_custom_ops4.so 2>&1 | head -40 \
