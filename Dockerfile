@@ -6,9 +6,13 @@ FROM public.ecr.aws/deep-learning-containers/pytorch-training:2.9.0-gpu-py312-cu
 USER root
 
 # Install FFmpeg (required by TorchCodec for video/audio decode/encode).
+# Ubuntu puts shared libs in /usr/lib/x86_64-linux-gnu; DLC LD_LIBRARY_PATH can omit it.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
+
+# So the loader finds libavutil.so.56 etc. when loading torchcodec's .so files.
+ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}
 
 # Install TorchCodec 0.9 (matches torch 2.9 per torchcodec README compatibility table).
 # CUDA build from PyTorch index; without --index-url pip would install CPU-only.
