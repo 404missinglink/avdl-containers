@@ -18,9 +18,11 @@ RUN for i in 1 2 3; do apt-get update && break || { [ "$i" -eq 3 ] && exit 1; sl
     && apt-get install -y --no-install-recommends patchelf \
     && rm -rf /var/lib/apt/lists/*
 
-# 3. torchcodec (CPU) -> av (PyAV) -> patch-torchcodec; then run patcher
+# 3. torchcodec (CPU) -> av (PyAV) -> patch-torchcodec; run patcher with LD_LIBRARY_PATH set
+#    so its built-in verify (runs in same RUN) sees our libs before DLC CUDA paths
 RUN pip install --no-cache-dir "torchcodec==0.9.*" --index-url https://download.pytorch.org/whl/cpu \
     && pip install --no-cache-dir av patch-torchcodec \
+    && export LD_LIBRARY_PATH="/usr/local/lib/python3.12/site-packages/av.libs:/usr/local/lib/python3.12/site-packages/torch/lib:${LD_LIBRARY_PATH:-}" \
     && patch-torchcodec
 
 # 4. Prepend our libs to LD_LIBRARY_PATH so loader finds them before DLC CUDA paths
