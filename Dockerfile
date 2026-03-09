@@ -45,11 +45,14 @@ RUN echo "=== TorchCodec stage: pip show ===" \
     && ls -la /usr/local/lib/python3.12/site-packages/torchcodec/*.so 2>/dev/null || true
 
 # ---- Stage 3: Loader and import ----
-# Verify Stage 3: LD_LIBRARY_PATH at runtime, ldd on FFmpeg-4 .so to see missing deps, then import.
-RUN echo "=== Loader stage: LD_LIBRARY_PATH (with our path) ===" \
-    && export LD_LIBRARY_PATH=${TORCHCODEC_LIB}:${TORCH_LIB}:/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-} \
-    && echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" \
+# ldd resolves all deps (torchcodec_core4, torch, c10, FFmpeg) but Python import still fails - likely
+# the python process does not see LD_LIBRARY_PATH (e.g. DLC python wrapper). Use env(1) to force it.
+RUN _LLP="${TORCHCODEC_LIB}:${TORCH_LIB}:/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}" \
+    && echo "=== Loader stage: LD_LIBRARY_PATH ===" \
+    && echo "$_LLP" \
     && echo "=== Loader stage: ldd libtorchcodec_custom_ops4.so (FFmpeg 4) ===" \
-    && ldd /usr/local/lib/python3.12/site-packages/torchcodec/libtorchcodec_custom_ops4.so 2>&1 | head -40 \
-    && echo "=== Loader stage: python import ===" \
-    && python -c "import torch; from torchcodec.decoders import VideoDecoder; print('PyTorch:', torch.__version__); print('TorchCodec OK')"
+    && LD_LIBRARY_PATH="$_LLP" ldd /usr/local/lib/python3.12/site-packages/torchcodec/libtorchcodec_custom_ops4.so 2>&1 | head -40 \
+    && echo "=== Loader stage: LD_LIBRARY_PATH visible inside Python? ===" \
+    && LD_LIBRARY_PATH="$_LLP" python -c "import os; p=os.environ.get('LD_LIBRARY_PATH',''); print('Yes, length', len(p)) if p else print('No')" \
+    && echo "=== Loader stage: python import (via env so Python sees LD_LIBRARY_PATH) ===" \
+    && env LD_LIBRARY_PATH="$_LLP" python -c "import torch; from torchcodec.decoders import VideoDecoder; print('PyTorch:', torch.__version__); print('TorchCodec OK')"
