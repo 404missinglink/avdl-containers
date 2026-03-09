@@ -1,0 +1,11 @@
+[project]
+name = "torchcodec-hello"
+version = "0.1.0"
+description = "Hello world script verifying PyTorch and TorchCodec"
+dependencies = [
+    "torch",
+    "torchcodec",
+]
+
+[tool.uv]
+dev-dependencies = []
