@@ -5,16 +5,20 @@ FROM public.ecr.aws/deep-learning-containers/pytorch-training:2.9.0-gpu-py312-cu
 
 USER root
 
-# ---- Stage 1: FFmpeg via Conda ----
-# TorchCodec requires FFmpeg with specific sonames; apt's distro FFmpeg can ABI-mismatch.
-# Conda provides a known-good FFmpeg that matches what the wheels expect. We only use
-# conda for FFmpeg; training still runs with the DLC's Python (LD_LIBRARY_PATH picks up conda libs).
+# ---- Stage 1: FFmpeg via Miniforge (conda-forge only, no Anaconda ToS) ----
+# TorchCodec needs FFmpeg with specific sonames; conda-forge provides a known-good build.
+# Miniforge uses conda-forge as default and avoids Anaconda Terms of Service in CI.
+# Training still runs with the DLC's Python; we only add /opt/conda/lib to LD_LIBRARY_PATH.
+ARG MINIFORGE_VERSION=25.11.0-1
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/* \
-    && curl -sL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o /tmp/miniconda.sh \
-    && bash /tmp/miniconda.sh -bfp /opt/conda \
-    && rm /tmp/miniconda.sh \
-    && /opt/conda/bin/conda install -y ffmpeg -c conda-forge \
+    && curl -sL "https://github.com/conda-forge/miniforge/releases/download/${MINIFORGE_VERSION}/Miniforge3-${MINIFORGE_VERSION}-Linux-x86_64.sh" -o /tmp/miniforge.sh \
+    && bash /tmp/miniforge.sh -bfp /opt/conda \
+    && rm /tmp/miniforge.sh \
+    && /opt/conda/bin/conda config --system --set channel_priority strict \
+    && /opt/conda/bin/conda config --system --prepend channels conda-forge \
+    && /opt/conda/bin/conda config --system --remove channels defaults 2>/dev/null || true \
+    && /opt/conda/bin/conda install -y ffmpeg \
     && /opt/conda/bin/conda clean -afy
 
 # Verify Stage 1: Conda FFmpeg binary and shared libs.
