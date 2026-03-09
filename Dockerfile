@@ -8,8 +8,8 @@ RUN for i in 1 2 3; do apt-get update && break || { [ "$i" -eq 3 ] && exit 1; sl
     && apt-get install -y --no-install-recommends patchelf \
     && rm -rf /var/lib/apt/lists/*
 
-# TorchCodec 0.9 + PyAV (bundled FFmpeg) + patch-torchcodec to patch RPATH
-RUN pip install --no-cache-dir "torchcodec==0.9.*" --index-url https://download.pytorch.org/whl/cu130 \
+# TorchCodec 0.9 (CPU wheel; patch-torchcodec works with PyAV) + PyAV + patch-torchcodec
+RUN pip install --no-cache-dir "torchcodec==0.9.*" --index-url https://download.pytorch.org/whl/cpu \
     && pip install --no-cache-dir av patch-torchcodec \
     && patch-torchcodec
 

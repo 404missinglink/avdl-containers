@@ -1,33 +1,15 @@
-# Minimal local image: Python + TorchCodec + FFmpeg (native, no patch-torchcodec).
-# Single FFmpeg 8 (BtbN shared); patchelf sets RPATH on TorchCodec .so so loader finds it.
+# Minimal local image: Python + TorchCodec via patch-torchcodec (PyAV bundled FFmpeg).
 #   docker build --platform linux/amd64 -f Dockerfile.local -t avdl-local .
 #   docker run -it avdl-local bash
 FROM python:3.12-slim-bookworm
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl patchelf xz-utils \
+RUN apt-get update && apt-get install -y --no-install-recommends patchelf \
     && rm -rf /var/lib/apt/lists/*
 
-# BtbN FFmpeg 8 shared libs + bin to /opt/ffmpeg (one FFmpeg for CLI and TorchCodec)
-ARG BTBN_FFMPEG_URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.0-latest-linux64-gpl-shared-8.0.tar.xz"
-RUN curl -sL -o /tmp/ffmpeg.tar.xz "${BTBN_FFMPEG_URL}" \
-    && mkdir -p /opt/ffmpeg \
-    && tar -C /opt/ffmpeg --strip-components=1 -xf /tmp/ffmpeg.tar.xz \
-    && rm /tmp/ffmpeg.tar.xz \
-    && LD_LIBRARY_PATH=/opt/ffmpeg/lib /opt/ffmpeg/bin/ffmpeg -version
-
-ENV PATH="/opt/ffmpeg/bin:$PATH" \
-    LD_LIBRARY_PATH="/opt/ffmpeg/lib"
-
-# Torch 2.9 + TorchCodec 0.9 (ABI-matched)
+# Torch 2.9 + TorchCodec 0.9 (CPU); PyAV (bundled FFmpeg) + patch-torchcodec to patch RPATH
 RUN pip install --no-cache-dir "torch==2.9.*" "torchcodec==0.9.*" \
-    --index-url https://download.pytorch.org/whl/cpu
+    --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir av patch-torchcodec \
+    && patch-torchcodec
 
-# TC_DIR from pip show so we patch where pip actually installed (matches CI/DLC behavior).
-RUN TORCH_LIB="$(python -c "import torch; print(torch.__path__[0])")/lib" \
-    && TC_DIR="$(pip show -f torchcodec | sed -n 's/^Location: //p')/torchcodec" \
-    && for so in "${TC_DIR}"/libtorchcodec_*.so; do \
-         patchelf --add-rpath "/opt/ffmpeg/lib:${TORCH_LIB}" "$so"; \
-       done
-
-RUN python -c "import torch; from torchcodec.decoders import VideoDecoder; print('torch', torch.__version__, 'torchcodec OK')"
-RUN /opt/ffmpeg/bin/ffmpeg -version | head -1
+RUN patch-torchcodec --verify
