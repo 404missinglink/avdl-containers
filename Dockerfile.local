@@ -22,9 +22,9 @@ ENV PATH="/opt/ffmpeg/bin:$PATH" \
 RUN pip install --no-cache-dir "torch==2.9.*" "torchcodec==0.9.*" \
     --index-url https://download.pytorch.org/whl/cpu
 
-# Point TorchCodec .so at our FFmpeg and torch libs via RPATH (no LD_LIBRARY_PATH)
+# Get TC_DIR from site-packages so we never import torchcodec before RPATH is set.
 RUN TORCH_LIB="$(python -c "import torch; print(torch.__path__[0])")/lib" \
-    && TC_DIR="$(python -c "import torchcodec; print(torchcodec.__path__[0])")" \
+    && TC_DIR="$(python -c "import site; print(site.getsitepackages()[0])")/torchcodec" \
     && for so in "${TC_DIR}"/libtorchcodec_*.so; do \
          patchelf --add-rpath "/opt/ffmpeg/lib:${TORCH_LIB}" "$so"; \
        done
