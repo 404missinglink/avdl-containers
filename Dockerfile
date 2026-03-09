@@ -5,6 +5,7 @@ FROM public.ecr.aws/deep-learning-containers/pytorch-training:2.9.0-gpu-py312-cu
 
 USER root
 
+# ---- Stage 1: FFmpeg ----
 # Install FFmpeg (required by TorchCodec for video/audio decode/encode).
 # TorchCodec loads .so files that depend on libavutil.so.56 etc.; Ubuntu puts them in
 # /usr/lib/x86_64-linux-gnu. DLC images often set LD_LIBRARY_PATH to CUDA paths only,
@@ -14,13 +15,37 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && ldconfig
 
+# Verify Stage 1: FFmpeg binary, shared libs, and ldconfig cache.
+RUN echo "=== FFmpeg stage: binary ===" \
+    && ffmpeg -version | head -5 \
+    && echo "=== FFmpeg stage: shared libs in /usr/lib/x86_64-linux-gnu ===" \
+    && ls -la /usr/lib/x86_64-linux-gnu/libavutil* /usr/lib/x86_64-linux-gnu/libavcodec* /usr/lib/x86_64-linux-gnu/libavformat* 2>/dev/null || true \
+    && echo "=== FFmpeg stage: ldconfig cache (avutil) ===" \
+    && ldconfig -p | grep -E "avutil|avcodec|avformat" || true \
+    && echo "=== FFmpeg stage: default LD_LIBRARY_PATH ===" \
+    && echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-<unset>}"
+
 # So the loader finds FFmpeg shared libs at build and runtime.
 ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}
 
+# ---- Stage 2: TorchCodec pip install ----
 # Install TorchCodec 0.9 (matches torch 2.9 per torchcodec README compatibility table).
 # CUDA build from PyTorch index; without --index-url pip would install CPU-only.
 RUN pip install --no-cache-dir "torchcodec==0.9.*" \
     --index-url https://download.pytorch.org/whl/cu130
 
-# Sanity check: torch and torchcodec importable (set LD_LIBRARY_PATH in same RUN so it is guaranteed).
-RUN LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-} python -c "import torch; from torchcodec.decoders import VideoDecoder; print('PyTorch:', torch.__version__); print('TorchCodec OK')"
+# Verify Stage 2: pip show and list .so files.
+RUN echo "=== TorchCodec stage: pip show ===" \
+    && pip show torchcodec \
+    && echo "=== TorchCodec stage: .so files in site-packages ===" \
+    && ls -la /usr/local/lib/python3.12/site-packages/torchcodec/*.so 2>/dev/null || true
+
+# ---- Stage 3: Loader and import ----
+# Verify Stage 3: LD_LIBRARY_PATH at runtime, ldd on FFmpeg-4 .so to see missing deps, then import.
+RUN echo "=== Loader stage: LD_LIBRARY_PATH (with our path) ===" \
+    && export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-} \
+    && echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" \
+    && echo "=== Loader stage: ldd libtorchcodec_custom_ops4.so (FFmpeg 4) ===" \
+    && ldd /usr/local/lib/python3.12/site-packages/torchcodec/libtorchcodec_custom_ops4.so 2>&1 | head -40 \
+    && echo "=== Loader stage: python import ===" \
+    && python -c "import torch; from torchcodec.decoders import VideoDecoder; print('PyTorch:', torch.__version__); print('TorchCodec OK')"
