@@ -21,17 +21,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && /opt/conda/bin/conda install -y ffmpeg \
     && /opt/conda/bin/conda clean -afy
 
-# Verify Stage 1: Conda FFmpeg binary and shared libs.
-RUN echo "=== FFmpeg stage: conda binary ===" \
-    && /opt/conda/bin/ffmpeg -version | head -5 \
-    && echo "=== FFmpeg stage: conda lib (avutil, avcodec, avformat) ===" \
+# Verify Stage 1: Conda FFmpeg libs (required for torchcodec). Binary may need libx264; libs are enough.
+RUN echo "=== FFmpeg stage: conda lib (avutil, avcodec, avformat) ===" \
     && ls -la /opt/conda/lib/libavutil* /opt/conda/lib/libavcodec* /opt/conda/lib/libavformat* 2>/dev/null || true \
+    && ( /opt/conda/bin/ffmpeg -version | head -3 || echo "ffmpeg binary skipped (libs present)" ) \
     && echo "=== FFmpeg stage: default LD_LIBRARY_PATH ===" \
     && echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-<unset>}"
 
 # Loader must find: (1) torchcodec .so, (2) torch libs, (3) conda FFmpeg libs.
+# Do NOT prepend conda to PATH: the DLC's Python (with torch) must remain the default.
+# Use /opt/conda/bin/ffmpeg when you need the conda FFmpeg binary.
 ENV CONDA_LIB=/opt/conda/lib
-ENV PATH=/opt/conda/bin:${PATH}
 ENV TORCHCODEC_LIB=/usr/local/lib/python3.12/site-packages/torchcodec
 ENV TORCH_LIB=/usr/local/lib/python3.12/site-packages/torch/lib
 ENV LD_LIBRARY_PATH=${TORCHCODEC_LIB}:${TORCH_LIB}:${CONDA_LIB}:${LD_LIBRARY_PATH:-}
@@ -50,11 +50,14 @@ RUN echo "=== TorchCodec stage: pip show ===" \
 
 # ---- Stage 3: Loader and import ----
 # LD_LIBRARY_PATH includes conda FFmpeg libs so torchcodec can load. Use env(1) so Python sees it.
+# python must stay the DLC's Python (has torch); we only add conda libs via LD_LIBRARY_PATH.
 RUN _LLP="${TORCHCODEC_LIB}:${TORCH_LIB}:${CONDA_LIB}:${LD_LIBRARY_PATH:-}" \
     && echo "=== Loader stage: LD_LIBRARY_PATH ===" \
     && echo "$_LLP" \
-    && echo "=== Loader stage: ldd torchcodec .so (one of core4-8) ===" \
-    && LD_LIBRARY_PATH="$_LLP" ldd /usr/local/lib/python3.12/site-packages/torchcodec/libtorchcodec_custom_ops4.so 2>&1 | head -40 \
+    && echo "=== Loader stage: which python (must be DLC, not conda) ===" \
+    && which python \
+    && echo "=== Loader stage: ldd one torchcodec .so ===" \
+    && ( _so=$(ls /usr/local/lib/python3.12/site-packages/torchcodec/libtorchcodec_core*.so 2>/dev/null | head -1); [ -n "$_so" ] && LD_LIBRARY_PATH="$_LLP" ldd "$_so" 2>&1 | head -40 || echo "no core .so found" ) \
     && echo "=== Loader stage: LD_LIBRARY_PATH visible inside Python? ===" \
     && LD_LIBRARY_PATH="$_LLP" python -c "import os; p=os.environ.get('LD_LIBRARY_PATH',''); print('Yes, length', len(p)) if p else print('No')" \
     && echo "=== Loader stage: python import (via env so Python sees LD_LIBRARY_PATH) ===" \
