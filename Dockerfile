@@ -15,9 +15,4 @@ RUN pip install --no-cache-dir torchcodec \
     --index-url https://download.pytorch.org/whl/cu130
 
 # Sanity check: torch and torchcodec importable.
-RUN python -c " \
-import torch; \
-from torchcodec.decoders import VideoDecoder; \
-print('PyTorch:', torch.__version__); \
-print('TorchCodec VideoDecoder OK'); \
-"
+RUN python -c "import torch; from torchcodec.decoders import VideoDecoder; print('PyTorch:', torch.__version__); print('TorchCodec OK')"
