@@ -3,21 +3,17 @@ FROM public.ecr.aws/deep-learning-containers/pytorch-training:2.9.0-gpu-py312-cu
 
 USER root
 
-# ---- FFmpeg 8 (BtbN shared) ----
-ARG FFMPEG_RELEASE=autobuild-2026-03-09-13-15
-ARG FFMPEG_ARCHIVE=ffmpeg-n8.0.1-76-gfa4ee7ab3c-linux64-gpl-shared-8.0.tar.xz
-RUN apt-get update && apt-get install -y --no-install-recommends curl xz-utils \
-    && rm -rf /var/lib/apt/lists/* \
-    && curl -sL "https://github.com/BtbN/FFmpeg-Builds/releases/download/${FFMPEG_RELEASE}/${FFMPEG_ARCHIVE}" -o /tmp/ffmpeg.tar.xz \
-    && tar -xJf /tmp/ffmpeg.tar.xz -C /tmp \
-    && mv /tmp/ffmpeg-n*-linux64-gpl-shared-8.0 /opt/ffmpeg \
-    && rm /tmp/ffmpeg.tar.xz
-
-ENV PATH="/opt/ffmpeg/bin:${PATH}"
+# ---- FFmpeg 8 (static, multi-stage) ----
+COPY --from=mwader/static-ffmpeg:8.0.1 /ffmpeg /usr/local/bin/ffmpeg
+COPY --from=mwader/static-ffmpeg:8.0.1 /ffprobe /usr/local/bin/ffprobe
 RUN ffmpeg -version
 
-# ---- TorchCodec ----
+# ---- TorchCodec (needs shared FFmpeg libs; static build has none, so use apt for libs) ----
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/* \
+    && ldconfig
+
 RUN pip install --no-cache-dir "torchcodec==0.9.*" --index-url https://download.pytorch.org/whl/cu130
 
-ENV LD_LIBRARY_PATH=/usr/local/lib/python3.12/site-packages/torchcodec:/usr/local/lib/python3.12/site-packages/torch/lib:/opt/ffmpeg/lib:${LD_LIBRARY_PATH:-}
+ENV LD_LIBRARY_PATH=/usr/local/lib/python3.12/site-packages/torchcodec:/usr/local/lib/python3.12/site-packages/torch/lib:/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}
 RUN python -c "import torch; from torchcodec.decoders import VideoDecoder; print('torch', torch.__version__, 'torchcodec OK')"
