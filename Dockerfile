@@ -10,8 +10,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Install TorchCodec (CUDA build to match base image).
-RUN pip install --no-cache-dir torchcodec \
+# Install TorchCodec 0.9 (matches torch 2.9 per torchcodec README compatibility table).
+# CUDA build from PyTorch index; without --index-url pip would install CPU-only.
+RUN pip install --no-cache-dir "torchcodec==0.9.*" \
     --index-url https://download.pytorch.org/whl/cu130
 
 # Sanity check: torch and torchcodec importable.
