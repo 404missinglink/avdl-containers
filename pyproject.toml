@@ -1,7 +1,7 @@
 [project]
-name = "torchcodec-hello"
+name = "avdl-containers"
 version = "0.1.0"
-description = "Hello world script verifying PyTorch and TorchCodec"
+description = "Accelerated Vision Deep Learning containers (PyTorch, TorchCodec, FFmpeg on AWS DLC)"
 dependencies = [
     "torch",
     "torchcodec",
