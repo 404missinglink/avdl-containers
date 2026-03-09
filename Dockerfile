@@ -6,12 +6,15 @@ FROM public.ecr.aws/deep-learning-containers/pytorch-training:2.9.0-gpu-py312-cu
 USER root
 
 # Install FFmpeg (required by TorchCodec for video/audio decode/encode).
-# Ubuntu puts shared libs in /usr/lib/x86_64-linux-gnu; DLC LD_LIBRARY_PATH can omit it.
+# TorchCodec loads .so files that depend on libavutil.so.56 etc.; Ubuntu puts them in
+# /usr/lib/x86_64-linux-gnu. DLC images often set LD_LIBRARY_PATH to CUDA paths only,
+# so the loader can miss system libs. See: https://github.com/meta-pytorch/torchcodec/issues/730
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && ldconfig
 
-# So the loader finds libavutil.so.56 etc. when loading torchcodec's .so files.
+# So the loader finds FFmpeg shared libs at build and runtime.
 ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}
 
 # Install TorchCodec 0.9 (matches torch 2.9 per torchcodec README compatibility table).
@@ -19,5 +22,5 @@ ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}
 RUN pip install --no-cache-dir "torchcodec==0.9.*" \
     --index-url https://download.pytorch.org/whl/cu130
 
-# Sanity check: torch and torchcodec importable.
-RUN python -c "import torch; from torchcodec.decoders import VideoDecoder; print('PyTorch:', torch.__version__); print('TorchCodec OK')"
+# Sanity check: torch and torchcodec importable (set LD_LIBRARY_PATH in same RUN so it is guaranteed).
+RUN LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-} python -c "import torch; from torchcodec.decoders import VideoDecoder; print('PyTorch:', torch.__version__); print('TorchCodec OK')"
